@@ -1,8 +1,13 @@
 """
-Hark! The KMOON Ecosystem TVL Calculator
+Hark! The KMOON Ecosystem Analytics Calculator
 
-A most noble instrument for calculating Treasury Values Lock'd (TVL),
+A most noble instrument for calculating both Market Cap and TVL (Liquidity),
 across the vast KMOON ecosystem spanning multiple blockchain realms.
+
+Verily, we shall employ:
+- For Solana: Jupiter's wisdom for price, DexScreener's sight for liquidity
+- For Ethereum: Uniswap's pools and Chainlink's oracle
+- For TRON: The sacred scrolls of TRONSCAN
 
 Author: A humble servant of the KMOON ecosystem
 Date: As the moon waxeth full in the year of our Lord 2024
@@ -13,225 +18,266 @@ import json
 from decimal import Decimal
 import requests
 from web3 import Web3
-from typing import Dict, Optional
-import time
 import logging
 from pathlib import Path
+from typing import Dict
 
-# Verily, we shall configure our logging scrolls
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("KMOON-TVL")
+# Lo! Configure the logging scrolls
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("KMOON-Analytics")
 
-class KMOONEcosystemTVL:
-    """O! This most excellent machinery doth calculate the treasures of KMOON's realm"""
+class KMOONEcosystemAnalytics:
+    """O! This most excellent machinery doth calculate treasures across the realms"""
     
     def __init__(self):
         # Prithee, establish connections to the various realms
         self.solana_rpc = "https://api.mainnet-beta.solana.com"
-        self.jupiter_api = "https://price.jup.ag/v4/price"
-        
-        # Lo! The Ethereum realm beckons
+        self.dexscreener_api = "https://api.dexscreener.com/latest/dex/tokens/"
         self.eth_w3 = Web3(Web3.HTTPProvider('https://cloudflare-eth.com'))
-        self.factory_address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"
-        self.weth_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-        
-        # Hark! The Tron network calls
         self.tron_api = "https://apilist.tronscan.org/api"
         
-        # The sacred scrolls of contract interpretation
-        self._init_contract_abis()
+        # The sacred addresses of our digital treasures
+        self.tokens = {
+            "solana": [
+                "5tzkqRo8XjHefzuJumij7suA6N7nTZA1FSLtzM8Bpump",  # IYKYK
+                "HQ2KXz4rJf1b18sHiGgvsCUe8hgEH21jqf2gys5jpump"   # KMOON
+            ],
+            "ethereum": [
+                "0x5c050f01db04c98206eb55a6ca4dc3287c69abff",  # AA
+                "0x9756f5cd1cb7c0dbb6893973c2f0cec59c671c05"   # RB
+            ],
+            "tron": [
+                "TLxGAoiRk3oCr4yFPKHPrVAd7ZknhFcMWo"  # IYKYK
+            ]
+        }
         
-    def _init_contract_abis(self) -> None:
-        """Behold! The ancient texts that guide our communion with the chains"""
-        self.factory_abi = [{"constant":True,"inputs":[{"name":"tokenA","type":"address"},{"name":"tokenB","type":"address"}],"name":"getPair","outputs":[{"name":"pair","type":"address"}],"type":"function"}]
-        self.pair_abi = [{"constant":True,"inputs":[],"name":"getReserves","outputs":[{"name":"reserve0","type":"uint112"},{"name":"reserve1","type":"uint112"},{"name":"blockTimestampLast","type":"uint32"}],"type":"function"},{"constant":True,"inputs":[],"name":"token0","outputs":[{"name":"","type":"address"}],"type":"function"}]
+        # The ancient scrolls of contract interpretation
+        self.erc20_abi = [
+            {"constant":True,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"type":"function"},
+            {"constant":True,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"},
+            {"constant":True,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"type":"function"}
+        ]
 
-    def get_solana_tvl(self, token_address: str) -> Dict:
-        """Pray tell, what treasures lie within the Solana realm?"""
+    def get_solana_metrics(self, token_address: str) -> Dict:
+        """Harken ye to the metrics from the Solana realm!
+        
+        By Jupiter's grace we divine the price,
+        Through DexScreener's eye we glimpse the liquidity,
+        And from Solana's own RPC we learn of supply.
+        """
         try:
-            logger.info(f"Querying the Solana oracles for {token_address}")
+            logger.info(f"Seeking wisdom about the token at {token_address}")
             
-            # Summon forth the token's bounty
+            # First, let us consult the Solana RPC about supply
             payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "getTokenSupply",
                 "params": [token_address]
             }
-            response = requests.post(self.solana_rpc, json=payload)
-            supply_data = response.json()
+            supply_response = requests.post(self.solana_rpc, json=payload)
+            supply_data = supply_response.json()
             
             if not supply_data.get('result', {}).get('value'):
-                logger.error(f"Alas! Could not divine the supply of {token_address}")
-                return {"error": "Supply remains shrouded in mystery"}
+                return {"error": "The supply remains shrouded in mystery"}
             
             # Calculate the grand sum, as the prophecy foretold
             amount = int(supply_data['result']['value']['amount'])
             decimals = supply_data['result']['value']['decimals']
             supply = Decimal(amount) / Decimal(10 ** decimals)
             
-            logger.info(f"Supply divined: {supply}")
-            
-            # Seek the price from Jupiter's oracle
-            price_response = requests.get(f"{self.jupiter_api}?ids={token_address}")
+            # Seek counsel from Jupiter about the price
+            price_response = requests.get(f"https://price.jup.ag/v4/price?ids={token_address}")
             price_data = price_response.json()
             
-            if 'data' in price_data and token_address in price_data['data']:
-                price = Decimal(str(price_data['data'][token_address]['price']))
-                tvl = supply * price
-                logger.info(f"TVL calculated: ${tvl:,.2f}")
-                return {"tvl": float(tvl)}
+            if 'data' not in price_data or token_address not in price_data['data']:
+                return {"error": "Jupiter's oracle remains silent"}
             
-            logger.error(f"Price discovery failed for {token_address}")
-            return {"error": "Forsooth! The price eludes our grasp"}
+            price = Decimal(str(price_data['data'][token_address]['price']))
+            ticker = price_data['data'][token_address].get('mintSymbol', '')
+            
+            # Now, let us gaze into DexScreener's pool of knowledge
+            dex_response = requests.get(f"{self.dexscreener_api}{token_address}")
+            dex_data = dex_response.json()
+            
+            total_liquidity = Decimal('0')
+            if dex_data.get('pairs'):
+                total_liquidity = sum(
+                    Decimal(str(pair.get('liquidity', {}).get('usd', 0))) 
+                    for pair in dex_data['pairs']
+                )
+            
+            return {
+                "ticker": ticker,
+                "price": float(price),
+                "supply": float(supply),
+                "tvl": float(total_liquidity)
+            }
+            
         except Exception as e:
-            logger.error(f"O woeful day! Solana calculation failed: {str(e)}")
+            logger.error(f"Alas! Our Solana quest has failed: {str(e)}")
             return {"error": str(e)}
 
-    def get_ethereum_tvl(self, token_address: str) -> Dict:
-        """Query the Ethereum realm for its locked treasures"""
+    def get_ethereum_metrics(self, token_address: str) -> Dict:
+        """Journey forth into the Ethereum realm to seek out treasures
+        
+        Through Uniswap's pools we divine both price and liquidity,
+        While Chainlink's oracle doth tell us ETH's true worth.
+        """
         try:
-            logger.info(f"Consulting the Ethereum oracles for {token_address}")
+            logger.info(f"Venturing into Ethereum for token {token_address}")
             
-            # ERC20 ABI for supply divination
-            erc20_abi = [{"constant":True,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"type":"function"},{"constant":True,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"type":"function"}]
+            # First, commune with the token contract
+            contract = self.eth_w3.eth.contract(
+                address=Web3.to_checksum_address(token_address), 
+                abi=self.erc20_abi
+            )
             
-            # Summon the contract's essence
-            contract = self.eth_w3.eth.contract(address=Web3.to_checksum_address(token_address), abi=erc20_abi)
             decimals = contract.functions.decimals().call()
+            ticker = contract.functions.symbol().call()
             raw_supply = contract.functions.totalSupply().call()
             supply = Decimal(raw_supply) / Decimal(10 ** decimals)
             
-            logger.info(f"Supply divined: {supply}")
-            
-            # Seek the price through Uniswap's pools
+            # Seek the Uniswap pools
+            factory_abi = [{"constant":True,"inputs":[{"name":"tokenA","type":"address"},{"name":"tokenB","type":"address"}],"name":"getPair","outputs":[{"name":"pair","type":"address"}],"type":"function"}]
             factory = self.eth_w3.eth.contract(
-                address=Web3.to_checksum_address(self.factory_address), 
-                abi=self.factory_abi
+                address=Web3.to_checksum_address("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"),
+                abi=factory_abi
             )
-            pair_address = factory.functions.getPair(
-                Web3.to_checksum_address(token_address), 
-                self.weth_address
-            ).call()
+            
+            weth = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+            pair_address = factory.functions.getPair(Web3.to_checksum_address(token_address), weth).call()
+            
+            price = Decimal('0')
+            tvl = Decimal('0')
             
             if pair_address != "0x0000000000000000000000000000000000000000":
-                pair = self.eth_w3.eth.contract(address=pair_address, abi=self.pair_abi)
+                pair_abi = [{"constant":True,"inputs":[],"name":"getReserves","outputs":[{"name":"","type":"uint112"},{"name":"","type":"uint112"},{"name":"","type":"uint32"}],"type":"function"}]
+                pair = self.eth_w3.eth.contract(address=pair_address, abi=pair_abi)
                 reserves = pair.functions.getReserves().call()
-                token0 = pair.functions.token0().call()
                 
-                if token0.lower() == token_address.lower():
-                    token_reserves = reserves[0]
-                    eth_reserves = reserves[1]
-                else:
-                    token_reserves = reserves[1]
-                    eth_reserves = reserves[0]
-                
-                # Divine ETH's value through Chainlink's oracle
+                # Consult Chainlink's oracle for ETH's value
                 chainlink = self.eth_w3.eth.contract(
                     address="0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419",
                     abi=[{"inputs":[],"name":"latestAnswer","outputs":[{"name":"","type":"int256"}],"type":"function"}]
                 )
                 eth_price = Decimal(chainlink.functions.latestAnswer().call()) / Decimal(10**8)
                 
-                if token_reserves > 0:
-                    price_in_eth = Decimal(eth_reserves) / Decimal(token_reserves)
-                    price_in_usd = price_in_eth * eth_price
-                    tvl = supply * price_in_usd
-                    logger.info(f"TVL calculated: ${tvl:,.2f}")
-                    return {"tvl": float(tvl)}
+                # Calculate the divine numbers
+                eth_reserves = Decimal(reserves[1]) / Decimal(10**18)
+                token_reserves = Decimal(reserves[0]) / Decimal(10**decimals)
+                price = (eth_reserves / token_reserves) * eth_price
+                tvl = eth_reserves * eth_price * 2
             
-            logger.error(f"No price pool found for {token_address}")
-            return {"tvl": 0}
+            return {
+                "ticker": ticker,
+                "price": float(price),
+                "supply": float(supply),
+                "tvl": float(tvl)
+            }
+            
         except Exception as e:
-            logger.error(f"Ethereum calculation failed: {str(e)}")
+            logger.error(f"Our Ethereum quest has met with misfortune: {str(e)}")
             return {"error": str(e)}
 
-    def get_tron_tvl(self, token_address: str) -> Dict:
-        """Investigate the treasures within TRON's dominion"""
+    def get_tron_metrics(self, token_address: str) -> Dict:
+        """Venture into TRON's domain to gather intelligence
+        
+        From TRONSCAN's sacred scrolls we shall learn
+        Of price, supply, and liquidity alike.
+        """
         try:
-            logger.info(f"Consulting the TRON oracles for {token_address}")
+            logger.info(f"Consulting the TRON oracles about {token_address}")
             
             response = requests.get(f"{self.tron_api}/token_trc20?contract={token_address}")
             data = response.json()
             
             if not data.get('trc20_tokens'):
-                logger.error(f"Token information not found for {token_address}")
-                return {"error": "Token remains unknown to the oracles"}
+                return {"error": "The token remains unknown to TRON's seers"}
             
             token_info = data['trc20_tokens'][0]
+            
+            if 'market_info' not in token_info:
+                return {"error": "The market's wisdom eludes us"}
+                
+            market_info = token_info['market_info']
+            ticker = token_info.get('symbol', '')
             decimals = int(token_info.get('decimals', 6))
-            total_supply = token_info.get('total_supply_with_decimals')
+            total_supply = Decimal(token_info.get('total_supply_with_decimals', '0'))
+            supply = total_supply / Decimal(10 ** decimals)
+            price = Decimal(str(market_info.get('priceInUsd', '0')))
+            liquidity = Decimal(str(market_info.get('liquidity', '0')))
             
-            if total_supply:
-                supply = Decimal(total_supply) / Decimal(10 ** decimals)
-                logger.info(f"Supply divined: {supply}")
-            else:
-                logger.error("Supply information missing")
-                return {"error": "Supply remains a mystery"}
+            return {
+                "ticker": ticker,
+                "price": float(price),
+                "supply": float(supply),
+                "tvl": float(liquidity)
+            }
             
-            if 'market_info' in token_info and 'priceInUsd' in token_info['market_info']:
-                price = Decimal(str(token_info['market_info']['priceInUsd']))
-                tvl = supply * price
-                logger.info(f"TVL calculated: ${tvl:,.2f}")
-                return {"tvl": float(tvl)}
-            
-            logger.error("Price information missing")
-            return {"tvl": 0}
         except Exception as e:
-            logger.error(f"TRON calculation failed: {str(e)}")
+            logger.error(f"Our TRON expedition has faltered: {str(e)}")
             return {"error": str(e)}
 
+    def calculate_ecosystem_metrics(self) -> Dict:
+        """The grand calculation of our entire realm's worth!
+        
+        Gather ye all metrics from each chain,
+        Sum up the bounties and treasures therein,
+        And present a unified view of our kingdom's wealth.
+        """
+        results = {
+            "tokens": {},
+            "totals": {
+                "total_market_cap": 0,
+                "total_tvl": 0
+            }
+        }
+        
+        logger.info("Beginning the grand calculation of our ecosystem's worth...")
+        
+        for chain, addresses in self.tokens.items():
+            for address in addresses:
+                if chain == "solana":
+                    metrics = self.get_solana_metrics(address)
+                elif chain == "ethereum":
+                    metrics = self.get_ethereum_metrics(address)
+                else:  # tron
+                    metrics = self.get_tron_metrics(address)
+                
+                if "error" not in metrics:
+                    market_cap = metrics['price'] * metrics['supply']
+                    
+                    results["tokens"][address] = {
+                        "ticker": metrics['ticker'],
+                        "market_cap": market_cap,
+                        "tvl": metrics['tvl']
+                    }
+                    
+                    results["totals"]["total_market_cap"] += market_cap
+                    results["totals"]["total_tvl"] += metrics['tvl']
+        
+        return results
+
+def get_kmoon_ecosystem_metrics() -> Dict:
+    """A most convenient function to divine our ecosystem's metrics"""
+    calculator = KMOONEcosystemAnalytics()
+    return calculator.calculate_ecosystem_metrics()
+
 def main():
-    """The grand orchestration of our KMOON ecosystem TVL quest"""
-    calculator = KMOONEcosystemTVL()
-    
-    # The sacred addresses of our digital treasures
-    tokens = {
-        "solana": [
-            "5tzkqRo8XjHefzuJumij7suA6N7nTZA1FSLtzM8Bpump",  # IYKYK
-            "HQ2KXz4rJf1b18sHiGgvsCUe8hgEH21jqf2gys5jpump"   # KMOON
-        ],
-        "ethereum": [
-            "0x5c050f01db04c98206eb55a6ca4dc3287c69abff",  # AA
-            "0x9756f5cd1cb7c0dbb6893973c2f0cec59c671c05"   # RB
-        ],
-        "tron": [
-            "TLxGAoiRk3oCr4yFPKHPrVAd7ZknhFcMWo"  # IYKYK
-        ]
-    }
-    
-    results = {"tokens": {}, "total_tvl": 0}
-    
-    # Begin our grand calculation
-    logger.info("Let the KMOON ecosystem TVL calculation commence!")
-    
-    for chain, addresses in tokens.items():
-        for address in addresses:
-            logger.info(f"Examining the treasures of {chain} at {address}")
-            
-            if chain == "solana":
-                tvl_data = calculator.get_solana_tvl(address)
-            elif chain == "ethereum":
-                tvl_data = calculator.get_ethereum_tvl(address)
-            else:  # tron
-                tvl_data = calculator.get_tron_tvl(address)
-            
-            if "tvl" in tvl_data:
-                results["tokens"][address] = tvl_data["tvl"]
-                results["total_tvl"] += tvl_data["tvl"]
+    """The grand orchestration of our analytics quest"""
+    # Gather the metrics from across the realms
+    results = get_kmoon_ecosystem_metrics()
     
     # Present our findings to the world
-    print("\nKMOON Ecosystem TVL Summary:")
+    print("\nKMOON Ecosystem Analytics Summary:")
     print(json.dumps(results, indent=2))
     
-    # Archive our discoveries
-    output_path = Path('kmoon_ecosystem_tvl.json')
+    # Archive our discoveries for posterity
+    output_path = Path('kmoon_ecosystem_metrics.json')
     with output_path.open('w') as f:
         json.dump(results, indent=2, fp=f)
-    logger.info(f"Our findings have been recorded in {output_path}")
+    logger.info(f"Our findings have been inscribed in {output_path}")
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,6 @@
 
 /venv
 kmoon_ecosystem_tvl_calculator/kmoon_ecosystem_tvl.json
+kmoon_ecosystem_tvl_calculator/kmoon_ecosystem_metrics.json
+kmoon_ecosystem_tvl_calculator/solana_dex_analysis.json
+kmoon_ecosystem_tvl_calculator/test_solana.py
